@@ -2,74 +2,73 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>LVGL WebBLE Touch</title>
+  <title>LVGL WebBLE Touch (480×480 + D-pad, Safe Zone 45%)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, sans-serif; }
+    :root {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, sans-serif;
+      --btn: clamp(56px, 14vw, 72px);
+    }
     body {
-      margin: 0;
-      color: #e6e9ee;
-      background: #0b0d10;
-      min-height: 100svh; /* dynamic viewport on mobile */
-      display: flex; align-items: center; justify-content: center;
-      padding: 16px;
+      margin: 0; color: #e6e9ee; background: #0b0d10;
+      min-height: 100svh; display: flex; align-items: center; justify-content: center; padding: 16px;
     }
-    .wrap {
-      width: 100%;
-      max-width: 520px;
-      display: flex; flex-direction: column; align-items: center; gap: 14px;
-      text-align: center;
-    }
+    .wrap { width: 100%; max-width: 520px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
     h1 { margin: 0; font-size: 1.05rem; color: #cfd7e3; font-weight: 600; }
 
-    .controls {
-      width: 100%;
-      display: grid; grid-template-columns: 1fr; gap: 10px;
-      align-items: center; justify-items: center;
-    }
+    .controls { width: 100%; display: grid; grid-template-columns: 1fr; gap: 10px; align-items: center; justify-items: center; }
     button#connect {
-      width: 100%;
-      max-width: 420px;
-      border: 0; padding: 14px 16px; border-radius: 12px;
-      background: #2979ff; color: white; font-weight: 700; font-size: 1rem;
-      cursor: pointer;
+      width: 100%; max-width: 420px; border: 0; padding: 14px 16px; border-radius: 12px;
+      background: #2979ff; color: white; font-weight: 700; font-size: 1rem; cursor: pointer;
     }
     button#connect:disabled { opacity: 0.6; cursor: default; }
     #status { opacity: 0.9; font-size: 0.95rem; }
 
     .canvas-shell {
-      display: inline-block; position: relative; user-select: none;
-      border: 3px solid #03a9f4; border-radius: 14px; padding: 10px;
-      background: #11161d;
+      display: inline-block; user-select: none;
+      border: 3px solid #03a9f4; border-radius: 14px; padding: 10px; background: #11161d;
     }
-    /* Square canvas that scales to fit width on phones */
+    .canvas-frame { position: relative; }
     canvas#lvgl_canvas {
-      display: block;
-      width: min(92vw, 480px);   /* responsive CSS size */
-      height: auto;              /* keeps 1:1 aspect from width/height attrs */
-      background: #0f1319;
-      outline: 1px dashed #2a3544;
-      cursor: crosshair;
-      touch-action: none;        /* avoid scrolling/zooming on touch */
+      display: block; width: min(92vw, 480px); height: auto; /* responsive CSS size, logical 480×480 */
+      background: #0f1319; outline: 1px dashed #2a3544; cursor: crosshair; touch-action: none;
     }
-    .hint {
-      position: absolute; right: 14px; bottom: 10px; font-size: 12px; opacity: 0.7;
+    .safe-zone {
+      position: absolute; left: 0; top: 0; width: 100%; height: 45%;
+      background: linear-gradient(to bottom, rgba(3,169,244,0.18), rgba(3,169,244,0.04));
+      border-bottom: 1px dashed rgba(3,169,244,0.5);
+      pointer-events: none;
+    }
+    .safe-zone span {
+      position: absolute; top: 6px; right: 8px; font-size: 12px; opacity: 0.8;
       background: rgba(0,0,0,0.35); padding: 2px 6px; border-radius: 6px;
     }
+    .hint { margin-top: 6px; font-size: 12px; opacity: 0.7; }
     #coords { font-size: 0.95rem; opacity: 0.9; }
 
-    .banner {
-      display: none;
-      width: 100%;
-      max-width: 480px;
-      background: #ff9800; color: #0b0d10; padding: 10px 12px; border-radius: 10px;
-      font-size: 0.95rem;
+    /* D-pad Cross */
+    .dpad {
+      display: grid;
+      grid-template-columns: var(--btn) var(--btn) var(--btn);
+      grid-template-rows: var(--btn) var(--btn) var(--btn);
+      gap: 12px; margin-top: 6px; justify-items: center; align-items: center;
     }
+    .dpad button {
+      width: var(--btn); height: var(--btn);
+      border-radius: 16px; border: 0; background: #1a232e; color: #e6e9ee;
+      font-size: calc(var(--btn) * 0.35); font-weight: 700; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    }
+    .dpad button:disabled { opacity: 0.5; cursor: default; }
+    .empty { width: var(--btn); height: var(--btn); visibility: hidden; }
+
+    .banner { display: none; width: 100%; max-width: 480px; background: #ff9800; color: #0b0d10;
+      padding: 10px 12px; border-radius: 10px; font-size: 0.95rem; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>LVGL WebBLE Touch</h1>
+    <h1>LVGL WebBLE Touch (480×480)</h1>
 
     <div class="controls">
       <button id="connect" aria-label="Connect to BLE Touch">Connect Touch BLE</button>
@@ -77,25 +76,53 @@
     </div>
 
     <div class="canvas-shell">
-      <canvas id="lvgl_canvas" width="480" height="480"></canvas>
-      <div class="hint">480 × 480 touch area</div>
+      <div class="canvas-frame">
+        <canvas id="lvgl_canvas" width="480" height="480"></canvas>
+        <div class="safe-zone"><span>Safe swipe zone (top 45%)</span></div>
+      </div>
+      <div class="hint">Pointer works everywhere; D-pad swipes are limited to the highlighted band.</div>
     </div>
 
     <div id="coords">x: –, y: –, pressed: –</div>
     <div id="banner" class="banner"></div>
+
+    <!-- D-pad as a cross -->
+    <div class="dpad" role="group" aria-label="Swipe controls">
+      <div class="empty"></div>
+      <button id="btnUp"    aria-label="Swipe up">▲</button>
+      <div class="empty"></div>
+
+      <button id="btnLeft"  aria-label="Swipe left">◀</button>
+      <div class="empty"></div>
+      <button id="btnRight" aria-label="Swipe right">▶</button>
+
+      <div class="empty"></div>
+      <button id="btnDown"  aria-label="Swipe down">▼</button>
+      <div class="empty"></div>
+    </div>
   </div>
 
   <script>
-    // ---- Set your Service/Characteristic UUIDs to match the ESP32 ----
+    // UUIDs – set to match your ESP32
     const TOUCH_SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
     const TOUCH_CHAR_UUID    = '12345678-1234-5678-1234-56789abcdea1';
 
-    let touchChar = null;
+    let touchChar = null, isDown = false, swiping = false;
     const connectBtn = document.getElementById('connect');
     const statusEl   = document.getElementById('status');
     const coordsEl   = document.getElementById('coords');
     const canvas     = document.getElementById('lvgl_canvas');
     const bannerEl   = document.getElementById('banner');
+
+    const btnUp = document.getElementById('btnUp');
+    const btnDown = document.getElementById('btnDown');
+    const btnLeft = document.getElementById('btnLeft');
+    const btnRight = document.getElementById('btnRight');
+
+    function setDpadEnabled(enabled) {
+      [btnUp, btnDown, btnLeft, btnRight].forEach(b => b.disabled = !enabled);
+    }
+    setDpadEnabled(false);
 
     // Feature detection + iOS heads-up
     (function supportCheck(){
@@ -136,6 +163,7 @@
           statusEl.textContent = 'Disconnected';
           touchChar = null;
           connectBtn.disabled = false;
+          setDpadEnabled(false);
         });
 
         statusEl.textContent = 'Connecting…';
@@ -148,62 +176,124 @@
         touchChar = await svc.getCharacteristic(TOUCH_CHAR_UUID);
 
         statusEl.textContent = 'BLE touch ready';
+        setDpadEnabled(true);
       } catch (err) {
         console.error(err);
         statusEl.textContent = 'Error: ' + (err?.message || err);
         connectBtn.disabled = false;
       }
     }
-
     connectBtn.addEventListener('click', connectBLE);
 
-    // Pack and send: [X_hi, X_lo, Y_hi, Y_lo, State]
+    // Send: [X_hi, X_lo, Y_hi, Y_lo, State]
     function sendTouch(x, y, down) {
       coordsEl.textContent = `x: ${x}, y: ${y}, pressed: ${down ? 'yes' : 'no'}`;
       if (!touchChar) return;
       const buf = new ArrayBuffer(5);
       const v   = new DataView(buf);
-      v.setUint16(0, x, false);   // big-endian
-      v.setUint16(2, y, false);   // big-endian
+      v.setUint16(0, x, false);
+      v.setUint16(2, y, false);
       v.setUint8 (4, down ? 1 : 0);
-
       touchChar.writeValueWithoutResponse(buf).catch(async () => {
         try { await touchChar.writeValue(buf); } catch (_) {}
       });
     }
 
-    // Track pressed state for robust mobile behavior
-    let isDown = false;
-
-    // Send on every move (hover sends with down=false; touch sends with down=true)
+    // Pointer events (still supported)
     canvas.addEventListener('pointermove', (e) => {
       const {x, y} = canvasXY(e);
-      // For mice: e.buttons reflects pressed state; for touch, rely on isDown
       const down = e.pointerType === 'mouse' ? !!e.buttons : isDown;
       sendTouch(x, y, down);
       e.preventDefault();
     }, { passive: false });
-
     canvas.addEventListener('pointerdown', (e) => {
-      isDown = true;
-      canvas.setPointerCapture(e.pointerId);
+      isDown = true; canvas.setPointerCapture(e.pointerId);
       const {x, y} = canvasXY(e);
-      sendTouch(x, y, true);
-      e.preventDefault();
+      sendTouch(x, y, true); e.preventDefault();
     }, { passive: false });
-
     function endPointer(e) {
-      isDown = false;
-      const {x, y} = canvasXY(e);
-      sendTouch(x, y, false);
-      e.preventDefault();
+      isDown = false; const {x, y} = canvasXY(e);
+      sendTouch(x, y, false); e.preventDefault();
     }
     canvas.addEventListener('pointerup', endPointer, { passive: false });
     canvas.addEventListener('pointercancel', endPointer, { passive: false });
     canvas.addEventListener('pointerleave', endPointer, { passive: false });
-
-    // Prevent long-press context menu on mobile
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // --------- D-pad swipes restricted to top 45% ----------
+    const SAFE_ZONE_FRAC       = 0.45;
+    const SWIPE_DURATION_MS    = 180;
+    const SWIPE_STEPS          = 10;
+    const H_SPAN_FRAC          = 0.50;
+    const V_SPAN_FRAC_IN_BAND  = 0.80;
+
+    function animateSwipe(x0, y0, x1, y1, done) {
+      if (swiping) return;
+      swiping = true;
+      sendTouch(x0, y0, true);
+      const start = performance.now();
+      function tick(now) {
+        const t = Math.min(1, (now - start) / SWIPE_DURATION_MS);
+        const x = Math.round(x0 + (x1 - x0) * t);
+        const y = Math.round(y0 + (y1 - y0) * t);
+        sendTouch(x, y, true);
+        if (t < 1) requestAnimationFrame(tick);
+        else { sendTouch(x1, y1, false); swiping = false; done && done(); }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function doSwipe(dir) {
+      if (!touchChar || swiping) return;
+
+      const W = canvas.width, H = canvas.height;
+      const bandH = Math.max(1, Math.floor(H * SAFE_ZONE_FRAC));
+      const yMid  = Math.floor(bandH / 2);
+      const xMid  = Math.floor(W / 2);
+
+      const spanX = Math.floor(W * H_SPAN_FRAC);
+      const spanY = Math.floor(bandH * V_SPAN_FRAC_IN_BAND);
+
+      const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+      let x0 = xMid, y0 = yMid, x1 = xMid, y1 = yMid;
+
+      if (dir === 'left')  {
+        x0 = clamp(xMid + Math.floor(spanX/2), 0, W-1);
+        x1 = clamp(xMid - Math.floor(spanX/2), 0, W-1);
+        y0 = y1 = yMid;
+      }
+      if (dir === 'right') {
+        x0 = clamp(xMid - Math.floor(spanX/2), 0, W-1);
+        x1 = clamp(xMid + Math.floor(spanX/2), 0, W-1);
+        y0 = y1 = yMid;
+      }
+      if (dir === 'up') {
+        y0 = clamp(yMid + Math.floor(spanY/2), 0, bandH-1);
+        y1 = clamp(yMid - Math.floor(spanY/2), 0, bandH-1);
+        x0 = x1 = xMid;
+      }
+      if (dir === 'down') {
+        y0 = clamp(yMid - Math.floor(spanY/2), 0, bandH-1);
+        y1 = clamp(yMid + Math.floor(spanY/2), 0, bandH-1);
+        x0 = x1 = xMid;
+      }
+      animateSwipe(x0, y0, x1, y1);
+    }
+
+    // SWAPPED left/right
+    btnLeft .addEventListener('click', () => doSwipe('right'));
+    btnRight.addEventListener('click', () => doSwipe('left'));
+    btnUp   .addEventListener('click', () => doSwipe('down'));
+    btnDown .addEventListener('click', () => doSwipe('up'));
+
+    // Arrow keys swapped too
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp')    { doSwipe('down');  e.preventDefault(); }
+      if (e.key === 'ArrowDown')  { doSwipe('up');    e.preventDefault(); }
+      if (e.key === 'ArrowLeft')  { doSwipe('right'); e.preventDefault(); }
+      if (e.key === 'ArrowRight') { doSwipe('left');  e.preventDefault(); }
+    });
   </script>
 </body>
 </html>
