@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>LVGL WebBLE Touch</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, sans-serif; }
+    body {
+      margin: 0;
+      color: #e6e9ee;
+      background: #0b0d10;
+      min-height: 100svh; /* dynamic viewport on mobile */
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .wrap {
+      width: 100%;
+      max-width: 520px;
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      text-align: center;
+    }
+    h1 { margin: 0; font-size: 1.05rem; color: #cfd7e3; font-weight: 600; }
+
+    .controls {
+      width: 100%;
+      display: grid; grid-template-columns: 1fr; gap: 10px;
+      align-items: center; justify-items: center;
+    }
+    button#connect {
+      width: 100%;
+      max-width: 420px;
+      border: 0; padding: 14px 16px; border-radius: 12px;
+      background: #2979ff; color: white; font-weight: 700; font-size: 1rem;
+      cursor: pointer;
+    }
+    button#connect:disabled { opacity: 0.6; cursor: default; }
+    #status { opacity: 0.9; font-size: 0.95rem; }
+
+    .canvas-shell {
+      display: inline-block; position: relative; user-select: none;
+      border: 3px solid #03a9f4; border-radius: 14px; padding: 10px;
+      background: #11161d;
+    }
+    /* Square canvas that scales to fit width on phones */
+    canvas#lvgl_canvas {
+      display: block;
+      width: min(92vw, 480px);   /* responsive CSS size */
+      height: auto;              /* keeps 1:1 aspect from width/height attrs */
+      background: #0f1319;
+      outline: 1px dashed #2a3544;
+      cursor: crosshair;
+      touch-action: none;        /* avoid scrolling/zooming on touch */
+    }
+    .hint {
+      position: absolute; right: 14px; bottom: 10px; font-size: 12px; opacity: 0.7;
+      background: rgba(0,0,0,0.35); padding: 2px 6px; border-radius: 6px;
+    }
+    #coords { font-size: 0.95rem; opacity: 0.9; }
+
+    .banner {
+      display: none;
+      width: 100%;
+      max-width: 480px;
+      background: #ff9800; color: #0b0d10; padding: 10px 12px; border-radius: 10px;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>LVGL WebBLE Touch</h1>
+
+    <div class="controls">
+      <button id="connect" aria-label="Connect to BLE Touch">Connect Touch BLE</button>
+      <span id="status">Not connected</span>
+    </div>
+
+    <div class="canvas-shell">
+      <canvas id="lvgl_canvas" width="480" height="480"></canvas>
+      <div class="hint">480 × 480 touch area</div>
+    </div>
+
+    <div id="coords">x: –, y: –, pressed: –</div>
+    <div id="banner" class="banner"></div>
+  </div>
+
+  <script>
+    // ---- Set your Service/Characteristic UUIDs to match the ESP32 ----
+    const TOUCH_SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
+    const TOUCH_CHAR_UUID    = '12345678-1234-5678-1234-56789abcdea1';
+
+    let touchChar = null;
+    const connectBtn = document.getElementById('connect');
+    const statusEl   = document.getElementById('status');
+    const coordsEl   = document.getElementById('coords');
+    const canvas     = document.getElementById('lvgl_canvas');
+    const bannerEl   = document.getElementById('banner');
+
+    // Feature detection + iOS heads-up
+    (function supportCheck(){
+      const isWebBT = ('bluetooth' in navigator);
+      const ua = navigator.userAgent || '';
+      const isiOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (!isWebBT) {
+        bannerEl.style.display = 'block';
+        bannerEl.textContent = 'Web Bluetooth is not supported in this browser.';
+      } else if (isiOS) {
+        bannerEl.style.display = 'block';
+        bannerEl.textContent = 'iOS/iPadOS Safari/Chrome lack Web Bluetooth. Use a Web Bluetooth–enabled app-browser (e.g., Bluefy).';
+      }
+    })();
+
+    // Map pointer to canvas pixels (handles CSS scaling / HiDPI)
+    function canvasXY(e) {
+      const r  = canvas.getBoundingClientRect();
+      const sx = canvas.width  / r.width;
+      const sy = canvas.height / r.height;
+      const x  = Math.round((e.clientX - r.left) * sx);
+      const y  = Math.round((e.clientY - r.top)  * sy);
+      return { x, y };
+    }
+
+    async function connectBLE() {
+      if (!('bluetooth' in navigator)) {
+        statusEl.textContent = 'Web Bluetooth not supported.';
+        return;
+      }
+      connectBtn.disabled = true;
+      statusEl.textContent = 'Requesting device…';
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [TOUCH_SERVICE_UUID] }]
+        });
+        device.addEventListener('gattserverdisconnected', () => {
+          statusEl.textContent = 'Disconnected';
+          touchChar = null;
+          connectBtn.disabled = false;
+        });
+
+        statusEl.textContent = 'Connecting…';
+        const gatt = await device.gatt.connect();
+
+        statusEl.textContent = 'Getting service…';
+        const svc = await gatt.getPrimaryService(TOUCH_SERVICE_UUID);
+
+        statusEl.textContent = 'Getting characteristic…';
+        touchChar = await svc.getCharacteristic(TOUCH_CHAR_UUID);
+
+        statusEl.textContent = 'BLE touch ready';
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = 'Error: ' + (err?.message || err);
+        connectBtn.disabled = false;
+      }
+    }
+
+    connectBtn.addEventListener('click', connectBLE);
+
+    // Pack and send: [X_hi, X_lo, Y_hi, Y_lo, State]
+    function sendTouch(x, y, down) {
+      coordsEl.textContent = `x: ${x}, y: ${y}, pressed: ${down ? 'yes' : 'no'}`;
+      if (!touchChar) return;
+      const buf = new ArrayBuffer(5);
+      const v   = new DataView(buf);
+      v.setUint16(0, x, false);   // big-endian
+      v.setUint16(2, y, false);   // big-endian
+      v.setUint8 (4, down ? 1 : 0);
+
+      touchChar.writeValueWithoutResponse(buf).catch(async () => {
+        try { await touchChar.writeValue(buf); } catch (_) {}
+      });
+    }
+
+    // Track pressed state for robust mobile behavior
+    let isDown = false;
+
+    // Send on every move (hover sends with down=false; touch sends with down=true)
+    canvas.addEventListener('pointermove', (e) => {
+      const {x, y} = canvasXY(e);
+      // For mice: e.buttons reflects pressed state; for touch, rely on isDown
+      const down = e.pointerType === 'mouse' ? !!e.buttons : isDown;
+      sendTouch(x, y, down);
+      e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      isDown = true;
+      canvas.setPointerCapture(e.pointerId);
+      const {x, y} = canvasXY(e);
+      sendTouch(x, y, true);
+      e.preventDefault();
+    }, { passive: false });
+
+    function endPointer(e) {
+      isDown = false;
+      const {x, y} = canvasXY(e);
+      sendTouch(x, y, false);
+      e.preventDefault();
+    }
+    canvas.addEventListener('pointerup', endPointer, { passive: false });
+    canvas.addEventListener('pointercancel', endPointer, { passive: false });
+    canvas.addEventListener('pointerleave', endPointer, { passive: false });
+
+    // Prevent long-press context menu on mobile
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  </script>
+</body>
+</html>
