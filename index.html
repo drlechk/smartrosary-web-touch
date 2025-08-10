@@ -39,7 +39,7 @@
 
     /* D-pad cross */
     .dpad {
-      display: grid;
+      display: none;
       grid-template-columns: var(--btn) var(--btn) var(--btn);
       grid-template-rows: var(--btn) var(--btn) var(--btn);
       gap: 12px; margin-top: 6px; justify-items: center; align-items: center;
@@ -71,8 +71,8 @@
     <div id="coords">x: –, y: –, pressed: –</div>
     <div id="banner" class="banner"></div>
 
-    <!-- 
-    <div class="dpad" role="group" aria-label="LVGL directions">
+    <!-- D-pad cross sending LV_DIR byte -->
+    <div class="dpad" role="group" aria-label="LVGL directions" >
       <div class="empty"></div>
       <button id="btnUp"    aria-label="Top (LV_DIR_TOP)">▲</button>
       <div class="empty"></div>
@@ -84,7 +84,7 @@
       <div class="empty"></div>
       <button id="btnDown"  aria-label="Bottom (LV_DIR_BOTTOM)">▼</button>
       <div class="empty"></div>
-    </div>-->
+    </div>
   </div>
 
   <script>
