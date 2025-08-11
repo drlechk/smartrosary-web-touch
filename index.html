@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>LVGL WebBLE — Round Touch + LV_DIR D-pad</title>
+  <title>LVGL WebBLE — Round Touch + D-pad w/ Center</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, sans-serif; --btn: clamp(56px, 14vw, 72px); }
@@ -21,11 +21,10 @@
     button#connect:disabled { opacity: 0.6; cursor: default; }
     #status { opacity: 0.9; font-size: 0.95rem; }
 
-    .canvas-shell { display: inline-block; user-select: none; border-radius: 50%; padding: 10px; background: #11161d; }
-    /* Round canvas: visual + hit testing */
+    .canvas-shell { position: relative; display: inline-block; user-select: none; border-radius: 50%; padding: 10px; background: #11161d; }
     canvas#lvgl_canvas {
       display: block;
-      width: min(92vw, 480px); height: auto; /* CSS size; logical is 480×480 */
+      width: min(92vw, 480px); height: auto; /* CSS size; logical 480×480 */
       background: radial-gradient(ellipse at center, #0f1319 0%, #0f1319 60%, #0c1016 100%);
       border: 4px solid #03a9f4;
       border-radius: 50%;
@@ -52,12 +51,13 @@
       touch-action: manipulation;
     }
     .dpad .empty { width: var(--btn); height: var(--btn); visibility: hidden; }
+    .dpad button.center { font-size: calc(var(--btn) * 0.28); background: #263241; }
     .dpad button:disabled { opacity: 0.5; cursor: default; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>LVGL WebBLE — Round Touch + LV_DIR D-pad</h1>
+    <h1>LVGL WebBLE — Round Touch + D-pad w/ Center</h1>
 
     <div class="controls">
       <button id="connect" aria-label="Connect to BLE">Connect</button>
@@ -71,14 +71,14 @@
     <div id="coords">x: –, y: –, pressed: –</div>
     <div id="banner" class="banner"></div>
 
-    <!-- D-pad cross sending LV_DIR byte -->
-    <div class="dpad" role="group" aria-label="LVGL directions" >
+    <!-- D-pad cross (LV_DIR + center=16) -->
+    <div class="dpad" role="group" aria-label="LVGL directions + center">
       <div class="empty"></div>
       <button id="btnUp"    aria-label="Top (LV_DIR_TOP)">▲</button>
       <div class="empty"></div>
 
       <button id="btnLeft"  aria-label="Left (LV_DIR_LEFT)">◀</button>
-      <div class="empty"></div>
+      <button id="btnCenter" class="center" aria-label="Center (CMD 16)">●</button>
       <button id="btnRight" aria-label="Right (LV_DIR_RIGHT)">▶</button>
 
       <div class="empty"></div>
@@ -88,13 +88,14 @@
   </div>
 
   <script>
-    // ==== UUIDs (set to match your ESP32) ====
+    // ==== UUIDs (set to your ESP32) ====
     const TOUCH_SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
-    const TOUCH_CHAR_UUID    = '12345678-1234-5678-1234-56789abcdea1'; // 5-byte pointer [xHi,xLo,yHi,yLo,state]
-    const KEYS_CHAR_UUID     = '12345678-1234-5678-1234-56789abcdea2'; // 1-byte LV_DIR_*
+    const TOUCH_CHAR_UUID    = '12345678-1234-5678-1234-56789abcdea1'; // 5-byte pointer
+    const KEYS_CHAR_UUID     = '12345678-1234-5678-1234-56789abcdea2'; // 1-byte command
 
-    // LVGL direction constants (v8): LEFT=1, RIGHT=2, TOP=4, BOTTOM=8
-    const LV = { LEFT:2, RIGHT:1, TOP:8, BOTTOM:4 };
+    // LVGL direction constants (v8)
+    const LV = { LEFT:1, RIGHT:2, TOP:4, BOTTOM:8 };
+    const CMD_CENTER = 16; // middle knob command
 
     let touchChar = null, keysChar = null;
     let isDown = false;
@@ -109,13 +110,13 @@
     const btnDown = document.getElementById('btnDown');
     const btnLeft = document.getElementById('btnLeft');
     const btnRight = document.getElementById('btnRight');
+    const btnCenter = document.getElementById('btnCenter');
 
     function setDpadEnabled(enabled){
-      [btnUp, btnDown, btnLeft, btnRight].forEach(b => b.disabled = !enabled);
+      [btnUp, btnDown, btnLeft, btnRight, btnCenter].forEach(b => b.disabled = !enabled);
     }
     setDpadEnabled(false);
 
-    // Feature detection hint
     (function supportCheck(){
       const isWebBT = ('bluetooth' in navigator);
       if (!isWebBT) {
@@ -124,7 +125,6 @@
       }
     })();
 
-    // Map pointer to canvas pixels (handles CSS scaling / HiDPI)
     function canvasXY(e) {
       const r  = canvas.getBoundingClientRect();
       const sx = canvas.width  / r.width;
@@ -133,8 +133,6 @@
       const y  = Math.round((e.clientY - r.top)  * sy);
       return { x, y };
     }
-
-    // Clamp point to circle (centered circle with radius = min(w,h)/2)
     function clampToCircle(x, y) {
       const W = canvas.width, H = canvas.height;
       const cx = W / 2, cy = H / 2;
@@ -167,13 +165,11 @@
 
         statusEl.textContent = 'Connecting…';
         const gatt = await device.gatt.connect();
-
         statusEl.textContent = 'Getting service…';
         const svc = await gatt.getPrimaryService(TOUCH_SERVICE_UUID);
 
         statusEl.textContent = 'Getting characteristics…';
         touchChar = await svc.getCharacteristic(TOUCH_CHAR_UUID);
-
         try {
           keysChar = await svc.getCharacteristic(KEYS_CHAR_UUID);
           setDpadEnabled(true);
@@ -181,8 +177,7 @@
           console.warn('Keys characteristic not found:', e);
           setDpadEnabled(false);
         }
-
-        statusEl.textContent = keysChar ? 'BLE ready (touch + LV_DIR keys)' : 'BLE ready (touch only)';
+        statusEl.textContent = keysChar ? 'BLE ready (touch + keys)' : 'BLE ready (touch only)';
       } catch (err) {
         console.error(err);
         statusEl.textContent = 'Error: ' + (err?.message || err);
@@ -191,24 +186,24 @@
     }
     connectBtn.addEventListener('click', connectBLE);
 
-    // ----- Touch sender: [X_hi, X_lo, Y_hi, Y_lo, State] -----
+    // 5-byte touch: [xHi,xLo,yHi,yLo,state]
     function sendTouch(x, y, down) {
       coordsEl.textContent = `x: ${x}, y: ${y}, pressed: ${down ? 'yes' : 'no'}`;
       if (!touchChar) return;
       const buf = new ArrayBuffer(5);
       const v   = new DataView(buf);
-      v.setUint16(0, x, false);   // big-endian
-      v.setUint16(2, y, false);   // big-endian
+      v.setUint16(0, x, false);
+      v.setUint16(2, y, false);
       v.setUint8 (4, down ? 1 : 0);
       touchChar.writeValueWithoutResponse(buf).catch(async () => {
         try { await touchChar.writeValue(buf); } catch(_) {}
       });
     }
 
-    // ----- LV_DIR sender: 1 byte -----
-    function sendDir(dirByte) {
+    // 1-byte key/dir/cmd
+    function sendKey(byte) {
       if (!keysChar) return;
-      const buf = new Uint8Array([dirByte & 0xFF]);
+      const buf = new Uint8Array([byte & 0xFF]);
       keysChar.writeValueWithoutResponse(buf).catch(async () => {
         try { await keysChar.writeValue(buf); } catch(_) {}
       });
@@ -243,19 +238,21 @@
     canvas.addEventListener('pointerleave', endPointer, { passive: false });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // D-pad buttons (send LV_DIR byte)
-    btnUp   .addEventListener('pointerdown', e => { sendDir(LV.TOP);    e.preventDefault(); });
-    btnDown .addEventListener('pointerdown', e => { sendDir(LV.BOTTOM); e.preventDefault(); });
-    btnLeft .addEventListener('pointerdown', e => { sendDir(LV.LEFT);   e.preventDefault(); });
-    btnRight.addEventListener('pointerdown', e => { sendDir(LV.RIGHT);  e.preventDefault(); });
+    // D-pad buttons
+    btnUp   .addEventListener('pointerdown', e => { sendKey(LV.TOP);    e.preventDefault(); });
+    btnDown .addEventListener('pointerdown', e => { sendKey(LV.BOTTOM); e.preventDefault(); });
+    btnLeft .addEventListener('pointerdown', e => { sendKey(LV.LEFT);   e.preventDefault(); });
+    btnRight.addEventListener('pointerdown', e => { sendKey(LV.RIGHT);  e.preventDefault(); });
+    btnCenter.addEventListener('pointerdown', e => { sendKey(CMD_CENTER); e.preventDefault(); });
 
-    // Optional keyboard on desktop
+    // Optional desktop keys
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
-      if (e.key === 'ArrowUp')    { sendDir(LV.TOP);    e.preventDefault(); }
-      if (e.key === 'ArrowDown')  { sendDir(LV.BOTTOM); e.preventDefault(); }
-      if (e.key === 'ArrowLeft')  { sendDir(LV.LEFT);   e.preventDefault(); }
-      if (e.key === 'ArrowRight') { sendDir(LV.RIGHT);  e.preventDefault(); }
+      if (e.key === 'Enter' || e.key === ' ') { sendKey(CMD_CENTER); e.preventDefault(); }
+      if (e.key === 'ArrowUp')    { sendKey(LV.TOP);    e.preventDefault(); }
+      if (e.key === 'ArrowDown')  { sendKey(LV.BOTTOM); e.preventDefault(); }
+      if (e.key === 'ArrowLeft')  { sendKey(LV.LEFT);   e.preventDefault(); }
+      if (e.key === 'ArrowRight') { sendKey(LV.RIGHT);  e.preventDefault(); }
     });
   </script>
 </body>
